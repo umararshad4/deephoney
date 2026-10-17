@@ -1,0 +1,22 @@
+[package]
+name = "app"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "deephoney"
+path = "src/main.rs"
+
+[dependencies]
+engine = { path = "../engine" }
+gpui-kit = "=0.7.3"
+anyhow = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# ponytail: compile Metal shaders at runtime so the build needs no Xcode `metal` tool.
+gpui-pre-macos = { version = "=0.3.9", features = ["runtime_shaders"] }

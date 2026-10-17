@@ -1,0 +1,25 @@
+# Build output and local working files
+/target/
+/.local/
+/.scratch/
+/.worktrees/
+.DS_Store
+
+# Credentials and local runtime data
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+config.json
+
+# Editor state
+.idea/
+.vscode/
+*.swp
+*~

@@ -1,0 +1,28 @@
+[package]
+name = "engine"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = "1"
+arti-client = { version = "0.47", features = ["onion-service-client"] }
+bytes = "1"
+futures = "0.3"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+htmd = "0.5"
+dom_smoothie = "0.18"
+regex = "1"
+reqwest = { version = "0.13", features = ["json", "query", "form", "gzip", "brotli", "cookies"] }
+scraper = "0.24"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-native-tls = "0.3"
+tor-hscrypto = "0.47"
+tor-rtcompat = { version = "0.47", features = ["tokio", "native-tls"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
+url = "2"

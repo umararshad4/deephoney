@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title description">
+  <title id="title">DeepHoney</title>
+  <desc id="description">A graphite and amber banner with a honeycomb network. Deep research, traceable evidence.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#111419"/><stop offset="1" stop-color="#1b2027"/></linearGradient>
+    <radialGradient id="glow"><stop stop-color="#f6b73c" stop-opacity=".12"/><stop offset="1" stop-color="#f6b73c" stop-opacity="0"/></radialGradient>
+    <linearGradient id="honey" x2="1" y2="1"><stop stop-color="#ffd77d"/><stop offset="1" stop-color="#e99c20"/></linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#747d89" opacity=".17"/></pattern>
+  </defs>
+  <rect width="1280" height="400" rx="24" fill="url(#bg)"/>
+  <rect width="1280" height="400" rx="24" fill="url(#grid)"/>
+  <ellipse cx="1000" cy="205" rx="300" ry="260" fill="url(#glow)"/>
+  <path d="M64 64h34" stroke="#f7b640" stroke-width="4" stroke-linecap="round"/>
+  <text x="64" y="110" fill="#aab2be" font-family="ui-monospace, Menlo, monospace" font-size="13" letter-spacing="3">NATIVE RESEARCH WORKSPACE</text>
+  <text x="59" y="211" fill="#f4f1eb" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="82" font-weight="700" letter-spacing="-4">DeepHoney<tspan fill="#f7b640">.</tspan></text>
+  <text x="64" y="260" fill="#b5bdc8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24">Deep research. Traceable evidence.</text>
+  <text x="64" y="337" fill="#7f8a99" font-family="ui-monospace, Menlo, monospace" font-size="12" letter-spacing="2">PLAN / INVESTIGATE / VERIFY / REPORT</text>
+  <g stroke="#d5a344" stroke-opacity=".35" fill="none" stroke-width="1.5">
+    <path d="m930 90 64 37v74l-64 37-64-37v-74Z"/>
+    <path d="m1058 90 64 37v74l-64 37-64-37v-74Z"/>
+    <path d="m994 201 64 37v74l-64 37-64-37v-74Z"/>
+    <path d="m866 201 64 37v74l-64 37-64-37v-74Z"/>
+    <path d="m1122 201 64 37v74l-64 37-64-37v-74Z"/>
+  </g>
+  <path d="m994 135 50 29v58l-50 29-50-29v-58Z" fill="url(#honey)"/>
+  <path d="m975 193 13 13 27-30" fill="none" stroke="#30230e" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#f4bd59"><circle cx="866" cy="127" r="4"/><circle cx="1122" cy="127" r="4"/><circle cx="930" cy="312" r="4"/><circle cx="1058" cy="312" r="4"/></g>
+  <rect x=".5" y=".5" width="1279" height="399" rx="24" fill="none" stroke="#ffffff" stroke-opacity=".07"/>
+</svg>

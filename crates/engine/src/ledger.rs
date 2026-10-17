@@ -35,6 +35,15 @@ pub struct Claim {
     pub contradicts: Vec<usize>,
     /// "supported: …" / "refuted: …" / "unresolved: …" after the debate pass.
     pub verdict: Option<String>,
+    #[serde(default)]
+    pub evidence: Vec<Evidence>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Evidence {
+    pub source: usize,
+    pub quote: String,
+    pub locator: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -73,15 +82,54 @@ impl Ledger {
 
     /// Returns true if the claim is new; otherwise the source is attached to the matching claim.
     pub fn add_claim(&mut self, text: &str, quote: &str, source: usize, lens: &str) -> bool {
+        self.add_evidence(text, quote, source, lens, None)
+    }
+
+    pub fn add_evidence(&mut self, text: &str, quote: &str, source: usize, lens: &str, locator: Option<String>) -> bool {
         let key = claim_key(text);
+        let evidence = Evidence { source, quote: quote.into(), locator };
         if let Some(c) = self.claims.iter_mut().find(|c| claim_key(&c.text) == key) {
+            if c.evidence.is_empty()
+                && !c.quote.is_empty()
+                && let Some(&old_source) = c.sources.first()
+            {
+                c.evidence.push(Evidence {
+                    source: old_source,
+                    quote: c.quote.clone(),
+                    locator: Some("legacy quote; per-source mapping unavailable".into()),
+                });
+            }
             if !c.sources.contains(&source) {
                 c.sources.push(source);
             }
+            if !c.evidence.iter().any(|e| e.source == source && e.quote == quote && e.locator == evidence.locator) {
+                c.evidence.push(evidence);
+            }
             return false;
         }
-        self.claims.push(Claim { text: text.into(), quote: quote.into(), lens: lens.into(), sources: vec![source], ..Default::default() });
+        self.claims.push(Claim {
+            text: text.into(),
+            quote: quote.into(),
+            lens: lens.into(),
+            sources: vec![source],
+            evidence: vec![evidence],
+            ..Default::default()
+        });
         true
+    }
+
+    /// Old sessions have one quote without source-specific evidence; label that fallback explicitly.
+    pub fn evidence(&self, c: &Claim) -> Vec<Evidence> {
+        if c.evidence.is_empty() {
+            c.sources
+                .first()
+                .map(|&source| {
+                    vec![Evidence { source, quote: c.quote.clone(), locator: Some("legacy quote; per-source mapping unavailable".into()) }]
+                })
+                .unwrap_or_default()
+        } else {
+            c.evidence.clone()
+        }
     }
 
     pub fn contradict(&mut self, a: usize, b: usize) {
@@ -206,6 +254,39 @@ pub fn quality(url: &str, stratum: Stratum) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn adding_evidence_to_a_legacy_claim_preserves_its_original_quote() {
+        let mut ledger = super::Ledger::default();
+        ledger.claims.push(super::Claim {
+            text: "Launch was in March".into(),
+            quote: "March was the public release month".into(),
+            sources: vec![0],
+            ..Default::default()
+        });
+        ledger.add_evidence("Launch was in March", "It launched during March", 1, "Timeline", Some("page 4".into()));
+        assert_eq!(ledger.claims[0].evidence.len(), 2);
+        assert_eq!(ledger.claims[0].evidence[0].source, 0);
+        assert_eq!(ledger.claims[0].evidence[0].quote, "March was the public release month");
+        assert_eq!(ledger.claims[0].evidence[1].source, 1);
+    }
+
+    #[test]
+    fn merged_claim_keeps_each_sources_quote_and_locator() {
+        let mut ledger = super::Ledger::default();
+        let a = ledger.add_source("https://a.test", "a", "first unique document", None, crate::Stratum::Deep, "Timeline");
+        let b = ledger.add_source("https://b.test", "b", "second unrelated original", None, crate::Stratum::Deep, "Timeline");
+        assert!(ledger.add_evidence("Launch was in March", "Published during March after beta", a, "Timeline", Some("page 2".into())));
+        assert!(!ledger.add_evidence("Launch was in March", "March was the public release month", b, "Timeline", Some("section 3".into())));
+        let saved = serde_json::to_string(&ledger).unwrap();
+        let restored: super::Ledger = serde_json::from_str(&saved).unwrap();
+        let quotes = restored.evidence(&restored.claims[0]);
+        assert_eq!(quotes.len(), 2);
+        assert_eq!(quotes[0].source, a);
+        assert_eq!(quotes[1].source, b);
+        assert_eq!(quotes[1].quote, "March was the public release month");
+        assert_eq!(quotes[1].locator.as_deref(), Some("section 3"));
+    }
+
     use super::*;
 
     const ARTICLE: &str = "The central bank raised interest rates by half a point on Tuesday, citing persistent \

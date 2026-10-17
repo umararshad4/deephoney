@@ -41,6 +41,7 @@ pub struct DeepHoney {
     abort: Option<tokio::task::AbortHandle>,
     error: Option<String>,
     report: Option<Report>,
+    report_copied: bool,
     tab: usize,
     settings_open: bool,
     fields: Vec<Entity<InputState>>,
@@ -109,6 +110,7 @@ impl DeepHoney {
             abort: None,
             error,
             report: None,
+            report_copied: false,
             tab: 0,
             settings_open: false,
             fields,
@@ -156,6 +158,12 @@ impl DeepHoney {
     fn plan(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let identity = self.identity(cx);
         if identity.0.is_empty() || self.running || self.planning {
+            return;
+        }
+        if let Some(problem) = settings::model_setup_problem(&self.cfg) {
+            self.error = Some(problem.into());
+            self.settings_open = true;
+            cx.notify();
             return;
         }
         let req = Request {
@@ -292,6 +300,7 @@ impl DeepHoney {
                 .abort_handle(),
         );
         self.running = true;
+        self.report_copied = false;
         self.error = None;
         self.feed.clear();
         self.stats = [0; 4];
@@ -318,6 +327,7 @@ impl DeepHoney {
                         }
                         v.refresh_sessions();
                         v.report = Some(r);
+                        v.report_copied = false;
                         v.preview = None;
                         v.plan_fields.clear();
                         v.tab = 0;
@@ -366,6 +376,7 @@ impl DeepHoney {
         match s.load(id) {
             Ok(r) => {
                 self.report = Some(r);
+                self.report_copied = false;
                 self.feed.clear();
                 self.error = None;
                 self.settings_open = false;
@@ -564,6 +575,15 @@ impl DeepHoney {
                     .text_color(c(theme::MUTED))
                     .child(mode_hint(self.mode)),
             )
+            .when_some(settings::model_setup_problem(&self.cfg), |panel, problem| {
+                panel.child(h_flex().gap_2().flex_wrap()
+                    .child(div().flex_1().text_sm().text_color(c(theme::MUTED)).child(problem))
+                    .child(Button::new("setup-model").label("Set up model").small()
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.settings_open = true;
+                            cx.notify();
+                        }))))
+            })
     }
 
     fn plan_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -720,7 +740,18 @@ impl DeepHoney {
                     .when(self.tab == i, |b| b.primary()).when(self.tab != i, |b| b.ghost())
                     .on_click(cx.listener(move |this, _, _, cx| { this.tab = i; cx.notify(); }))
             })
-        );
+        ).child(div().flex_1()).when(self.report.is_some(), |row| {
+            row.child(Button::new("copy-report")
+                .label(if self.report_copied { "Copied" } else { "Copy report" }).small().ghost()
+                .disabled(self.running || self.planning)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(report) = &this.report {
+                        cx.write_to_clipboard(ClipboardItem::new_string(report.markdown.clone()));
+                        this.report_copied = true;
+                        cx.notify();
+                    }
+                })))
+        });
         let body: AnyElement = match &self.report {
             None => empty_state(self.error.is_some()).into_any_element(),
             Some(r) => match self.tab {
@@ -748,6 +779,7 @@ impl DeepHoney {
 
     fn settings_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let anthropic = self.cfg.provider == Provider::Anthropic;
+        let verifier_anthropic = self.cfg.verifier_provider == Provider::Anthropic;
         let rows = FIELDS.iter().zip(&self.fields).map(|(f, input)| {
             v_flex()
                 .gap_1()
@@ -779,8 +811,32 @@ impl DeepHoney {
                         cx.notify();
                     }))),
             )
+            .child(h_flex().gap_2()
+                .child(div().text_sm().child("Verifier provider (when a verifier model is set)"))
+                .child(Button::new("verifier-anthropic").label("Anthropic").small().when(verifier_anthropic, |b| b.primary()).when(!verifier_anthropic, |b| b.ghost()).on_click(cx.listener(|this, _, _, cx| {
+                    this.cfg.verifier_provider = Provider::Anthropic;
+                    this.invalidate_plan();
+                    cx.notify();
+                })))
+                .child(Button::new("verifier-openai").label("OpenAI-compatible").small().when(!verifier_anthropic, |b| b.primary()).when(verifier_anthropic, |b| b.ghost()).on_click(cx.listener(|this, _, _, cx| {
+                    this.cfg.verifier_provider = Provider::OpenAi;
+                    this.invalidate_plan();
+                    cx.notify();
+                }))))
             .children(rows)
+            .child(Button::new("browser-opt-in").label(if self.cfg.browser_enabled { "Browser rendering enabled — click to disable" } else { "Enable isolated Chrome for dynamic public pages" }).small().when(self.cfg.browser_enabled, |b| b.primary()).when(!self.cfg.browser_enabled, |b| b.ghost()).on_click(cx.listener(|this, _, _, cx| {
+                this.cfg.browser_enabled = !this.cfg.browser_enabled;
+                this.invalidate_plan();
+                cx.notify();
+            })))
+            .child(div().text_xs().text_color(c(theme::MUTED)).child("Opt-in fallback uses a fresh browser profile for unreadable public pages. No login, form submissions, challenge bypass, or Dark-mode browsing."))
             .child(v_flex().gap_1().child(div().text_xs().text_color(c(theme::MUTED)).child("Maximum page reads (1–1000)")).child(Input::new(&self.pages_input)))
+            .child(Button::new("visual-documents").label(if self.cfg.visual_documents { "Visual PDF reading enabled — click to disable" } else { "Enable table/chart reading with the configured model" }).small().when(self.cfg.visual_documents, |b| b.primary()).when(!self.cfg.visual_documents, |b| b.ghost()).on_click(cx.listener(|this, _, _, cx| {
+                this.cfg.visual_documents = !this.cfg.visual_documents;
+                this.invalidate_plan();
+                cx.notify();
+            })))
+            .child(div().text_xs().text_color(c(theme::MUTED)).child("Scanned PDF OCR runs locally. Optional table/chart interpretation sends bounded page images to your planner/writer provider, uses model tokens, and can be wrong. Disabled in Dark mode."))
             .child(Button::new("tor-opt-in").label(if self.cfg.tor_enabled { "Tor enabled — click to disable" } else { "Enable embedded Tor for .onion text" }).small().when(self.cfg.tor_enabled, |b| b.primary()).when(!self.cfg.tor_enabled, |b| b.ghost()).on_click(cx.listener(|this, _, _, cx| {
                 this.cfg.tor_enabled = !this.cfg.tor_enabled;
                 this.invalidate_plan();
@@ -1012,7 +1068,7 @@ fn claims_view(r: &Report) -> impl IntoElement {
                         div()
                             .text_xs()
                             .text_color(c(theme::MUTED))
-                            .child(format!("{:.0}%", conf * 100.)),
+                            .child(format!("{:.0}% heuristic", conf * 100.)),
                     )
                     .child(badge(
                         format!(
@@ -1044,6 +1100,11 @@ fn claims_view(r: &Report) -> impl IntoElement {
                         )),
                     ),
             )
+            .children(l.evidence(cl).into_iter().map(|e| {
+                v_flex().gap_1()
+                    .child(div().text_xs().text_color(c(theme::MUTED)).child(format!("[{}] {}", e.source + 1, e.locator.as_deref().unwrap_or("source excerpt"))))
+                    .child(div().text_sm().child(format!("“{}”", e.quote)))
+            }))
     });
     v_flex().children(rows).when(l.claims.is_empty(), |d| {
         d.child(

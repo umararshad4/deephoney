@@ -17,6 +17,10 @@ pub const FIELDS: &[Field] = &[
     Field { key: "llm_base", label: "OpenAI-compatible base URL (Ollama / LM Studio / OpenRouter)", secret: false },
     Field { key: "strong_model", label: "Planner / writer model", secret: false },
     Field { key: "fast_model", label: "Reader model", secret: false },
+    Field { key: "verifier_model", label: "Verifier model (optional; blank uses the writer for self-checking)", secret: false },
+    Field { key: "verifier_base", label: "Verifier base URL (OpenAI-compatible; separate endpoint needs its own key)", secret: false },
+    Field { key: "verifier_key", label: "Verifier API key", secret: true },
+    Field { key: "browser_path", label: "Chrome / Chromium executable path (optional; blank uses discovery)", secret: false },
     Field { key: "brave_key", label: "Brave Search API key", secret: true },
     Field { key: "exa_key", label: "Exa API key", secret: true },
     Field { key: "tavily_key", label: "Tavily API key", secret: true },
@@ -32,6 +36,10 @@ pub fn slot<'a>(c: &'a mut Config, key: &str) -> &'a mut String {
         "llm_base" => &mut c.llm_base,
         "strong_model" => &mut c.strong_model,
         "fast_model" => &mut c.fast_model,
+        "verifier_model" => &mut c.verifier_model,
+        "verifier_base" => &mut c.verifier_base,
+        "verifier_key" => &mut c.verifier_key,
+        "browser_path" => &mut c.browser_path,
         "brave_key" => &mut c.brave_key,
         "exa_key" => &mut c.exa_key,
         "tavily_key" => &mut c.tavily_key,
@@ -98,9 +106,42 @@ pub fn page_budget(value: &str) -> Result<usize> {
     Ok(pages)
 }
 
+/// First-run guidance only; transport/authentication remain checked by the engine.
+pub fn model_setup_problem(config: &Config) -> Option<&'static str> {
+    if config.strong_model.trim().is_empty() || config.fast_model.trim().is_empty() {
+        return Some("Choose both a planner / writer model and a reader model in Settings.");
+    }
+    match config.provider {
+        engine::Provider::Anthropic if config.llm_key.trim().is_empty() =>
+            Some("Add your Anthropic API key in Settings, or choose an OpenAI-compatible model server."),
+        engine::Provider::OpenAi if config.llm_base.trim().is_empty() =>
+            Some("Add your OpenAI-compatible server URL in Settings. Local servers can work without an API key."),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setup_guidance_accepts_keyless_local_models_and_explains_missing_configuration() {
+        let mut config = Config::default();
+        assert!(model_setup_problem(&config).unwrap().contains("API key"));
+        config.llm_key = "local-test-secret".into();
+        assert!(model_setup_problem(&config).is_none());
+        config.provider = engine::Provider::OpenAi;
+        config.llm_key.clear();
+        assert!(model_setup_problem(&config).is_none());
+        config.llm_base = "  ".into();
+        assert!(model_setup_problem(&config).unwrap().contains("server URL"));
+        config.llm_base = "http://localhost:11434/v1".into();
+        config.fast_model.clear();
+        assert!(model_setup_problem(&config).unwrap().contains("reader model"));
+        config.fast_model = "local-model".into();
+        config.strong_model = " ".into();
+        assert!(model_setup_problem(&config).is_some());
+    }
 
     #[test]
     fn disk_config_excludes_every_keychain_secret() {
@@ -114,12 +155,17 @@ mod tests {
         assert!(restored.tor_enabled);
         assert_eq!(restored.max_pages, 42);
         assert_eq!(config.llm_key, "private-llm_key");
+        assert_eq!(config.verifier_key, "private-verifier_key");
     }
 
     #[test]
     fn older_settings_keep_safe_defaults() {
         let config: Config = serde_json::from_str(r#"{"contact":"user@example.test"}"#).unwrap();
         assert!(!config.tor_enabled);
+        assert!(!config.browser_enabled);
+        assert!(!config.visual_documents);
+        assert!(config.verifier_model.is_empty());
+        assert!(config.verifier_key.is_empty());
         assert_eq!(config.max_pages, Config::default().max_pages);
     }
 

@@ -1,2 +1,5 @@
 * text=auto eol=lf
 *.svg text
+
+# Preserve document fixture byte offsets and PDF xref spacing.
+*.pdf binary

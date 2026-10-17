@@ -1,0 +1,32 @@
+[
+  {
+    "id": "meridian-reference",
+    "topic": "Artificial fixture: when did Meridian launch?",
+    "mode": "Normal",
+    "depth": 1,
+    "breadth": 1,
+    "max_pages": 2,
+    "timeout_secs": 10,
+    "expected": {
+      "facts": [
+        "Meridian launched in 2024"
+      ],
+      "source_urls": [
+        "https://example.org/reference"
+      ],
+      "forbidden_assertions": [
+        "Meridian launched in 2025"
+      ]
+    }
+  },
+  {
+    "id": "missing-report",
+    "topic": "Artificial fixture with an intentionally missing report",
+    "mode": "Normal",
+    "depth": 1,
+    "breadth": 1,
+    "max_pages": 2,
+    "timeout_secs": 10,
+    "expected": {}
+  }
+]

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "battery-storage",
+    "topic": "What does recent independent evidence say about grid-scale lithium-ion battery degradation, lifecycle emissions and recycling? Distinguish commercial deployments from laboratory results.",
+    "mode": "Normal",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  },
+  {
+    "id": "heat-pumps",
+    "topic": "Under what climate, electricity-price and building conditions do residential heat pumps reduce energy use and operating costs? Include counterexamples and regional differences.",
+    "mode": "Adversarial",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  },
+  {
+    "id": "ai-code-security",
+    "topic": "What do reproducible studies show about security defects in AI-generated code, and which interventions demonstrably reduce them? Separate controlled studies from vendor claims.",
+    "mode": "Adversarial",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  },
+  {
+    "id": "clinical-literature",
+    "topic": "What do systematic reviews and randomized trials report about mindfulness-based interventions for chronic pain? Distinguish effect size, evidence certainty and adverse-event reporting; this is literature research, not treatment advice.",
+    "mode": "Normal",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  },
+  {
+    "id": "open-source-maintenance",
+    "topic": "How are widely used open-source projects measuring maintainer sustainability and funding? Compare primary survey methodology, foundation reports and contrary evidence.",
+    "mode": "Normal",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  },
+  {
+    "id": "water-use-data-centers",
+    "topic": "How is data-center water consumption measured, and why do published estimates differ? Compare direct and indirect water, geographic constraints and disclosed limitations.",
+    "mode": "Adversarial",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  },
+  {
+    "id": "solar-supply-chain",
+    "topic": "What can public filings, trade statistics and technical reports establish about the concentration of the solar photovoltaic supply chain? State time periods and distinguish manufacturing stages.",
+    "mode": "Normal",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  },
+  {
+    "id": "archive-policy-change",
+    "topic": "How did the publicly documented GitHub Actions artifact retention policy and defaults evolve? Look for archived documentation and dated announcements, and distinguish missing evidence from confirmed changes.",
+    "mode": "Hidden",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  },
+  {
+    "id": "rail-electrification",
+    "topic": "What does public evidence show about the lifecycle cost and emissions of battery, hydrogen and overhead-electric regional trains? Compare actual deployments and study assumptions.",
+    "mode": "Adversarial",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  },
+  {
+    "id": "multilingual-disaster",
+    "topic": "How have official agencies and independent researchers evaluated the effectiveness of multilingual disaster-warning communication? Include evidence from more than one region and identify evaluation gaps.",
+    "mode": "Normal",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  },
+  {
+    "id": "paper-replication",
+    "topic": "How have preregistration, registered reports and multi-laboratory replication changed the evidence around social-psychology replication? Trace primary studies, criticism and methodological uncertainty.",
+    "mode": "Normal",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  },
+  {
+    "id": "onion-transparency",
+    "topic": "What can public search results and reachable official onion-service pages establish about onion-service publication practices? Avoid private services, authentication, alleged leaks and speculative attribution. Clearly identify unreachable services.",
+    "mode": "Dark",
+    "depth": 2,
+    "breadth": 2,
+    "max_pages": 12,
+    "timeout_secs": 600,
+    "expected": {}
+  }
+]

@@ -1,0 +1,33 @@
+{
+  "topic": "Artificial fixture: when did Meridian launch?",
+  "mode": "Normal",
+  "markdown": "# Artificial fixture\n\nMeridian launched in 2024. [1]\n",
+  "ledger": {
+    "sources": [
+      {
+        "url": "https://example.org/reference",
+        "title": "Artificial reference, not a real research result",
+        "stratum": "Surface",
+        "lens": "reference",
+        "cluster": 0,
+        "quality": 0.5,
+        "published": null,
+        "first_seen": null,
+        "simhash": 0
+      }
+    ],
+    "claims": [
+      {
+        "text": "Meridian launched in 2024",
+        "quote": "Meridian launched in 2024",
+        "lens": "reference",
+        "sources": [
+          0
+        ],
+        "contradicts": [],
+        "verdict": null
+      }
+    ]
+  },
+  "ghosts": []
+}

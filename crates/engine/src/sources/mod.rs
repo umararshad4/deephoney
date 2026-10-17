@@ -4,7 +4,7 @@ mod dark;
 mod deep;
 mod surface;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -228,18 +228,7 @@ fn arr(v: &Value) -> impl Iterator<Item = &Value> {
 
 /// Search APIs share the same body limit as page fetches.
 async fn body(net: &Net, request: reqwest::RequestBuilder) -> Result<String> {
-    let mut response = net.send(request).await?;
-    if response.content_length().is_some_and(|size| size > crate::net::MAX_BODY as u64) {
-        bail!("search response exceeds body limit");
-    }
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await? {
-        if bytes.len() + chunk.len() > crate::net::MAX_BODY {
-            bail!("search response exceeds body limit");
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    Ok(String::from_utf8_lossy(&bytes).into_owned())
+    net.search_body(request).await
 }
 
 pub(crate) async fn json(net: &Net, request: reqwest::RequestBuilder) -> Result<Value> {

@@ -1,0 +1,9 @@
+{
+  "title": "Controlled document comprehension reference",
+  "provenance": "Source-attributed controlled reference paraphrased from RFC 9110, published June 2022, sections 9.2.1 and 9.2.2. This narrow protocol comprehension task is not a representative web research benchmark. Verified against the RFC Editor text on 2026-10-18. Independent human review is required before a real study.",
+  "evidence": [
+    {"id":"safe-definition","case_id":"http-methods","statement":"A safe method is defined by essentially read-only requested semantics; incidental implementation side effects can still occur.","source":"https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.1","attribution":"Fielding, Nottingham and Reschke, RFC 9110, section 9.2.1"},
+    {"id":"idempotent-definition","case_id":"http-methods","statement":"Idempotence concerns the intended server effect of multiple identical requests compared with one request; responses need not be identical.","source":"https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2","attribution":"Fielding, Nottingham and Reschke, RFC 9110, section 9.2.2"},
+    {"id":"method-classes","case_id":"http-methods","statement":"Safe methods, PUT and DELETE are idempotent. General POST semantics do not guarantee idempotence.","source":"https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2","attribution":"Fielding, Nottingham and Reschke, RFC 9110, section 9.2.2"}
+  ]
+}

@@ -9,6 +9,9 @@ use gpui_kit::*;
 actions!(deephoney, [Quit]);
 
 fn main() {
+    if engine::document::run_pdf_worker() {
+        return;
+    }
     let rt = Arc::new(tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().expect("tokio runtime"));
     // Plug your research loop in here: any `engine::Researcher`.
     let researcher: Arc<dyn engine::Researcher> = Arc::new(engine::DeepResearch);
@@ -30,8 +33,7 @@ fn main() {
             window_min_size: Some(size(px(900.), px(600.))),
             ..Default::default()
         };
-        gpui_kit::open_window(options, cx, |window, cx| cx.new(|cx| ui::DeepHoney::new(rt, researcher, window, cx)))
-            .expect("open window");
+        gpui_kit::open_window(options, cx, |window, cx| cx.new(|cx| ui::DeepHoney::new(rt, researcher, window, cx))).expect("open window");
         cx.activate(true);
     });
 }

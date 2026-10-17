@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "description": "Synthetic English-only OCR fixtures. Truth is generated text, not independently graded research evidence.",
+  "cases": [
+    {
+      "id": "clean",
+      "rotation": 0,
+      "scale": 1,
+      "contrast": 1,
+      "font_size": 28
+    },
+    {
+      "id": "rotated",
+      "rotation": 90,
+      "scale": 1,
+      "contrast": 1,
+      "font_size": 28
+    },
+    {
+      "id": "low-resolution",
+      "rotation": 0,
+      "scale": 0.4,
+      "contrast": 1,
+      "font_size": 28
+    },
+    {
+      "id": "low-contrast",
+      "rotation": 0,
+      "scale": 1,
+      "contrast": 0.25,
+      "font_size": 28
+    },
+    {
+      "id": "small-print",
+      "rotation": 0,
+      "scale": 1,
+      "contrast": 1,
+      "font_size": 14
+    },
+    {
+      "id": "literal-punctuation",
+      "rotation": 0,
+      "scale": 1,
+      "contrast": 1,
+      "font_size": 28,
+      "lines": [
+        "Literal separators 0/. 12.50/. -3.50/.",
+        "These are printed punctuation tokens."
+      ],
+      "forbidden_observed": [
+        "%"
+      ]
+    }
+  ],
+  "lines": [
+    "Meridian synthetic financial statement",
+    "Year Revenue Margin",
+    "2024 $1,250.50 12.5%",
+    "2025 $1,750.25 -3.5%",
+    "Adjustment ($125.75)",
+    "Balance -42.00",
+    "Chart Revenue by quarter",
+    "North 125 South 175",
+    "Direct labels only; do not estimate from axes.",
+    "Research requires evidence and independent verification."
+  ],
+  "regression_gates": {
+    "cases": [
+      "clean",
+      "rotated"
+    ],
+    "min_word_recall": 0.9,
+    "min_exact_numeric_recall": 0.8
+  }
+}

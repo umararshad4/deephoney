@@ -21,11 +21,13 @@ enum Scenario {
     EmptyReport,
     RedTeam,
     Saturation,
+    LongDocument,
 }
 
 struct HttpRequest {
     target: String,
     body: Value,
+    authorization: Option<String>,
 }
 
 struct Fixture {
@@ -71,6 +73,11 @@ impl Fixture {
                     .find(|(k, _)| k.eq_ignore_ascii_case("content-length"))
                     .map(|(_, v)| v.trim().parse::<usize>().unwrap())
                     .unwrap_or(0);
+                let authorization = headers
+                    .lines()
+                    .filter_map(|line| line.split_once(':'))
+                    .find(|(name, _)| name.eq_ignore_ascii_case("authorization"))
+                    .map(|(_, value)| value.trim().to_owned());
                 while bytes.len() < header_end + length {
                     let mut chunk = [0; 4096];
                     let n = socket.read(&mut chunk).await.unwrap();
@@ -78,7 +85,7 @@ impl Fixture {
                     bytes.extend_from_slice(&chunk[..n]);
                 }
                 let body = serde_json::from_slice(&bytes[header_end..header_end + length]).unwrap_or(Value::Null);
-                let request = HttpRequest { target, body };
+                let request = HttpRequest { target, body, authorization };
                 let (status, content_type, body) = response(&request, &origin, scenario);
                 log.lock().unwrap().push(request);
                 let reply = format!(
@@ -109,8 +116,11 @@ fn response(req: &HttpRequest, base: &str, scenario: Scenario) -> (&'static str,
     if req.target.starts_with("/search?") {
         let url = url::Url::parse(&format!("{base}{}", req.target)).unwrap();
         let q = url.query_pairs().find(|(k, _)| k == "q").unwrap().1.into_owned();
-        if q == "broken" {
+        if q.starts_with("broken") {
             return ("400 Bad Request", "text/plain", "Search unavailable".into());
+        }
+        if q == "empty" {
+            return ok(json!({"results":[]}));
         }
         let page = if q.starts_with("repeat") {
             q.as_str()
@@ -135,6 +145,9 @@ fn response(req: &HttpRequest, base: &str, scenario: Scenario) -> (&'static str,
     }
     if req.target.starts_with("/stale") || req.target.starts_with("/repeat") {
         return ("200 OK", "text/plain", FIRST.into());
+    }
+    if matches!(scenario, Scenario::LongDocument) && req.target == "/first" {
+        return ("200 OK", "text/plain", format!("{}\n{FIRST}", "背景资料 ".repeat(8_000)));
     }
     if req.target == "/first" || req.target == "/second" {
         let text = if req.target == "/first" { FIRST } else { SECOND };
@@ -194,10 +207,11 @@ fn response(req: &HttpRequest, base: &str, scenario: Scenario) -> (&'static str,
         } else if matches!(scenario, Scenario::Investigation | Scenario::RedTeam) {
             json!({"summary":[{"text":"Sources disagree about the launch date.","claims":[0,1]}],"findings":[{"text":"Sources disagree about the launch date.","claims":[0,1]}],"contested":[]}).to_string()
         } else {
-            json!({"summary":[{"text":"The launch was in March 2024.","claims":[0]}],"findings":[{"text":"The launch was in March 2024.","claims":[0]}],"contested":[]}).to_string()
+            { let text = if user.contains(SECOND) { SECOND } else { FIRST };
+            json!({"summary":[{"text":text,"claims":[0]}],"findings":[{"text":text,"claims":[0]}],"contested":[]}).to_string() }
         }
     };
-    ok(json!({"choices":[{"message":{"content":content}}]}))
+    ok(json!({"choices":[{"message":{"content":content}}],"usage":{"prompt_tokens":11,"completion_tokens":7}}))
 }
 
 fn request(depth: usize, breadth: usize) -> Request {
@@ -264,7 +278,7 @@ async fn no_grounded_evidence_returns_an_error_without_writing_a_report() {
             .lock()
             .unwrap()
             .iter()
-            .any(|r| r.body["messages"][0]["content"].as_str().is_some_and(|s| s.contains("You write the final report")))
+            .any(|r| { r.body["messages"][0]["content"].as_str().is_some_and(|s| s.contains("You write the final report")) })
     );
 }
 
@@ -316,7 +330,7 @@ async fn the_edited_plan_runs_without_replacing_it_with_a_model_plan() {
             .lock()
             .unwrap()
             .iter()
-            .any(|r| r.body["messages"][0]["content"].as_str().is_some_and(|s| s.contains("RESEARCH PLAN")))
+            .any(|r| { r.body["messages"][0]["content"].as_str().is_some_and(|s| s.contains("RESEARCH PLAN")) })
     );
 }
 
@@ -375,4 +389,149 @@ async fn two_rounds_of_repeated_evidence_stop_before_maximum_depth() {
         .collect();
     assert_eq!(rounds, vec![(1, 1), (2, 0), (3, 0)]);
     assert_eq!(fixture.requests.lock().unwrap().iter().filter(|r| r.target.starts_with("/search?")).count(), 3);
+}
+
+#[tokio::test]
+async fn evidence_after_fourteen_thousand_unicode_characters_reaches_the_report() {
+    let fixture = Fixture::new(Scenario::LongDocument).await;
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let report = timeout(Duration::from_secs(30), DeepResearch.run(fixture.config(1), request(1, 1), tx)).await.unwrap().unwrap();
+    assert_eq!(report.ledger.claims.len(), 1);
+    assert_eq!(report.ledger.claims[0].text, FIRST);
+    assert!(report.markdown.contains(FIRST), "late evidence must appear in report provenance");
+    let requests = fixture.requests.lock().unwrap();
+    let reads: Vec<_> =
+        requests.iter().filter(|r| r.body["messages"][0]["content"].as_str().unwrap_or("").contains("EXTRACT CLAIMS")).collect();
+    assert!(reads.len() >= 4, "all retained sections must be read");
+    assert!(reads.iter().any(|r| { r.body["messages"][1]["content"].as_str().unwrap().contains(FIRST) }));
+    assert!(reads.iter().any(|r| { !r.body["messages"][1]["content"].as_str().unwrap().contains(FIRST) }));
+}
+
+#[tokio::test]
+async fn independent_verifier_receives_review_calls_without_the_writer_credential() {
+    let writer = Fixture::new(Scenario::FailedSearch).await;
+    let verifier = Fixture::new(Scenario::FailedSearch).await;
+    let cfg = Config {
+        llm_key: "writer-fixture-secret".into(),
+        verifier_provider: Provider::OpenAi,
+        verifier_base: verifier.base.clone(),
+        verifier_model: "fixture-independent-verifier".into(),
+        ..writer.config(1)
+    };
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let report = timeout(Duration::from_secs(30), DeepResearch.run(cfg, request(1, 2), tx)).await.unwrap().unwrap();
+    let writer_log = writer.requests.lock().unwrap();
+    let verifier_log = verifier.requests.lock().unwrap();
+    let writer_calls: Vec<_> = writer_log.iter().filter(|r| r.target == "/chat/completions").collect();
+    assert!(!writer_calls.is_empty());
+    assert!(writer_calls.iter().all(|r| r.authorization.as_deref() == Some("Bearer writer-fixture-secret")));
+    assert!(!writer_calls.iter().any(|r| { r.body["messages"][0]["content"].as_str().unwrap_or("").contains("VERIFY REPORT STATEMENTS") }));
+    assert!(verifier_log.iter().any(|r| { r.body["messages"][0]["content"].as_str().unwrap_or("").contains("VERIFY REPORT STATEMENTS") }));
+    assert!(verifier_log.iter().any(|r| { r.body["messages"][0]["content"].as_str().unwrap_or("").contains("REVIEW EVIDENCE") }));
+    assert!(verifier_log.iter().all(|r| r.authorization.is_none()), "a different endpoint cannot inherit the writer key");
+    assert!(verifier_log.iter().all(|r| r.body["model"] == "fixture-independent-verifier"));
+    let model_calls = writer_calls.len() + verifier_log.len();
+    assert_eq!(report.metrics.model_calls, model_calls);
+    assert_eq!(report.metrics.input_tokens, Some(model_calls as u64 * 11));
+    assert_eq!(report.metrics.output_tokens, Some(model_calls as u64 * 7));
+    assert_eq!(report.metrics.page_attempts, 1);
+    assert_eq!(report.metrics.search_requests, 2);
+    assert!(report.metrics.elapsed_ms > 0);
+    assert!(report.metrics.separate_verifier);
+    assert_eq!(report.metrics.verifier_model, "fixture-independent-verifier");
+    let store = Store::memory().unwrap();
+    let saved = store.save(&report).unwrap();
+    assert_eq!(store.load(saved).unwrap().metrics.model_calls, model_calls);
+}
+
+fn supplied_queries(queries: &[&str]) -> Request {
+    let mut req = request(1, 6);
+    req.plan = Some(engine::ResearchPlan {
+        done: false,
+        lenses: queries
+            .chunks(6)
+            .enumerate()
+            .map(|(i, chunk)| engine::Lens {
+                name: format!("Adapter reliability {i}"),
+                question: "When did Meridian launch?".into(),
+                sources: vec!["searxng".into()],
+                queries: chunk.iter().map(|q| (*q).into()).collect(),
+            })
+            .collect(),
+    });
+    req
+}
+
+#[tokio::test]
+async fn repeated_adapter_failure_pauses_remaining_queries_only_for_this_run() {
+    let fixture = Fixture::new(Scenario::FailedSearch).await;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let req = supplied_queries(&[
+        "broken1", "broken2", "broken3", "broken4", "broken5", "broken6", "broken7", "broken8", "broken9", "broken10", "broken11",
+        "broken12",
+    ]);
+    assert!(DeepResearch.run(fixture.config(1), req, tx).await.is_err());
+    let queries = fixture.requests.lock().unwrap().iter().filter(|r| r.target.starts_with("/search?")).count();
+    assert!(queries <= 6, "remaining failing queries should be skipped; made {queries}");
+    assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|e| matches!(e, Event::Warn(s) if s.contains("paused for this investigation"))));
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let report = DeepResearch.run(fixture.config(1), supplied_queries(&["launch"]), tx).await.unwrap();
+    assert_eq!(report.metrics.search_requests, 1);
+    assert_eq!(report.ledger.claims.len(), 1);
+}
+
+#[tokio::test]
+async fn successful_empty_search_resets_adapter_failures_and_keeps_later_queries() {
+    let fixture = Fixture::new(Scenario::FailedSearch).await;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let report = DeepResearch
+        .run(fixture.config(1), supplied_queries(&["broken1", "broken2", "empty", "broken3", "broken4", "launch"]), tx)
+        .await
+        .unwrap();
+    assert_eq!(report.metrics.search_requests, 6);
+    assert_eq!(report.ledger.claims.len(), 1);
+    assert!(!std::iter::from_fn(|| rx.try_recv().ok()).any(|e| matches!(e, Event::Warn(s) if s.contains("paused for this investigation"))));
+}
+
+#[tokio::test]
+async fn search_pause_is_retained_in_saved_report() {
+    let fixture = Fixture::new(Scenario::FailedSearch).await;
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let report = DeepResearch
+        .run(
+            fixture.config(1),
+            supplied_queries(&[
+                "launch", "broken1", "broken2", "broken3", "broken4", "broken5", "broken6", "broken7", "broken8", "broken9", "broken10",
+                "broken11",
+            ]),
+            tx,
+        )
+        .await
+        .unwrap();
+    assert!(report.metrics.search_requests <= 7);
+    assert!(report.markdown.contains("Reduced search coverage: searxng paused"));
+    let store = Store::memory().unwrap();
+    let id = store.save(&report).unwrap();
+    assert!(store.load(id).unwrap().markdown.contains("remaining queries were skipped"));
+}
+
+#[tokio::test]
+async fn closing_receiver_cancels_an_inflight_search_without_waiting_for_retry_budget() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let (accepted_tx, accepted_rx) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut bytes = [0; 4096];
+        let _ = socket.read(&mut bytes).await.unwrap();
+        let _ = accepted_tx.send(());
+        std::future::pending::<()>().await;
+    });
+    let cfg = Config { provider: Provider::OpenAi, llm_base: base.clone(), searxng_url: base, ..Config::default() };
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let research = tokio::spawn(DeepResearch.run(cfg, supplied_queries(&["launch"]), tx));
+    timeout(Duration::from_secs(3), accepted_rx).await.unwrap().unwrap();
+    drop(rx);
+    assert!(timeout(Duration::from_secs(1), research).await.unwrap().unwrap().is_err());
+    server.abort();
 }

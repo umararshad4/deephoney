@@ -7,6 +7,9 @@ pub mod net;
 pub mod report;
 pub mod research;
 pub use research::DeepResearch;
+mod browser;
+pub mod document;
+pub mod evaluation;
 pub mod sources;
 pub mod store;
 mod tor;
@@ -94,6 +97,13 @@ pub struct Config {
     pub contact: String,
     pub tor_enabled: bool,
     pub max_pages: usize,
+    pub browser_enabled: bool,
+    pub visual_documents: bool,
+    pub browser_path: String,
+    pub verifier_provider: Provider,
+    pub verifier_model: String,
+    pub verifier_base: String,
+    pub verifier_key: String,
 }
 
 impl Default for Config {
@@ -113,6 +123,13 @@ impl Default for Config {
             contact: String::new(),
             tor_enabled: false,
             max_pages: 160,
+            browser_enabled: false,
+            visual_documents: false,
+            browser_path: String::new(),
+            verifier_provider: Provider::OpenAi,
+            verifier_model: String::new(),
+            verifier_base: String::new(),
+            verifier_key: String::new(),
         }
     }
 }
@@ -139,6 +156,14 @@ impl Config {
         c.courtlistener_token = env("COURTLISTENER_TOKEN");
         c.contact = env("DEEPHONEY_CONTACT");
         c.tor_enabled = env("DEEPHONEY_TOR") == "1";
+        c.browser_enabled = env("DEEPHONEY_BROWSER") == "1";
+        c.visual_documents = env("DEEPHONEY_VISUAL_DOCUMENTS") == "1";
+        c.browser_path = env("DEEPHONEY_BROWSER_PATH");
+        c.verifier_provider =
+            if env("VERIFIER_PROVIDER").eq_ignore_ascii_case("anthropic") { Provider::Anthropic } else { Provider::OpenAi };
+        c.verifier_model = env("VERIFIER_MODEL");
+        c.verifier_base = env("VERIFIER_BASE_URL");
+        c.verifier_key = env("VERIFIER_API_KEY");
         c
     }
 }
@@ -207,6 +232,24 @@ pub struct Report {
     pub markdown: String,
     pub ledger: ledger::Ledger,
     pub ghosts: Vec<ghost::Ghost>,
+    #[serde(default)]
+    pub metrics: RunMetrics,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RunMetrics {
+    pub search_requests: usize,
+    pub page_attempts: usize,
+    pub retrieval_requests: usize,
+    pub retrieval_retries: usize,
+    pub recovered_requests: usize,
+    pub model_calls: usize,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub elapsed_ms: u64,
+    pub verifier_model: String,
+    pub separate_verifier: bool,
 }
 
 pub type BoxFuture<T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send>>;

@@ -5,7 +5,9 @@ use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
 /// Max characters of page text kept for the LLM.
-pub const MAX_TEXT: usize = 14_000;
+pub const MAX_TEXT: usize = 180_000;
+pub const CHUNK_CHARS: usize = 12_000;
+pub const CHUNK_OVERLAP: usize = 250;
 
 #[derive(Clone, Debug, Default)]
 pub struct Page {
@@ -14,11 +16,36 @@ pub struct Page {
     pub text: String,
     pub links: Vec<String>,
     pub published: Option<String>,
+    pub warnings: Vec<String>,
+    pub pages: Vec<PageLocation>,
+    /// Set only by readers, never inferred from source text.
+    pub machine_transcription: bool,
+}
+
+/// Trusted parser-generated, zero-based, half-open Unicode character range.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageLocation {
+    pub page: u32,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Page {
+    pub fn chunks(&self) -> Vec<TextChunk> {
+        let mut chunks = located_chunks(&self.text, &self.pages);
+        if self.machine_transcription {
+            for chunk in &mut chunks {
+                chunk.locator.push_str("; document includes machine transcription/visual candidates; verify original page");
+            }
+        }
+        chunks
+    }
 }
 
 pub fn page(url: &str, body: &str, html: bool) -> Page {
     if !html {
-        return Page { url: url.into(), title: url.into(), text: clip(body), ..Default::default() };
+        let (text, warnings) = retain(body);
+        return Page { url: url.into(), title: url.into(), text, warnings, ..Default::default() };
     }
     let links = links(body, url);
     let parsed = dom_smoothie::Readability::new(body, Some(url), None).and_then(|mut r| r.parse());
@@ -34,11 +61,56 @@ pub fn page(url: &str, body: &str, html: bool) -> Page {
             (String::new(), conv.convert(body).unwrap_or_default(), None)
         }
     };
-    Page { url: url.into(), title, text: clip(&text), links, published }
+    let (text, warnings) = retain(&text);
+    Page { url: url.into(), title, text, links, published, warnings, ..Default::default() }
 }
 
-fn clip(s: &str) -> String {
-    s.chars().take(MAX_TEXT).collect()
+pub(crate) fn retain(s: &str) -> (String, Vec<String>) {
+    let text: String = s.chars().take(MAX_TEXT).collect();
+    let warnings = if s.chars().nth(MAX_TEXT).is_some() {
+        vec![format!("Document text was truncated at {MAX_TEXT} characters; later content was not read.")]
+    } else {
+        Vec::new()
+    };
+    (text, warnings)
+}
+
+#[derive(Clone, Debug)]
+pub struct TextChunk {
+    pub text: String,
+    pub locator: String,
+}
+
+/// Overlapping Unicode character windows cover every retained character.
+pub fn chunks(text: &str) -> Vec<TextChunk> {
+    located_chunks(text, &[])
+}
+
+fn located_chunks(text: &str, pages: &[PageLocation]) -> Vec<TextChunk> {
+    let boundaries: Vec<usize> = text.char_indices().map(|(i, _)| i).chain(std::iter::once(text.len())).collect();
+    let total = boundaries.len() - 1;
+    let mut out = Vec::new();
+    let mut start = 0;
+    while start < total {
+        let end = (start + CHUNK_CHARS).min(total);
+        let mut overlapping = pages.iter().filter(|p| p.page > 0 && p.start < p.end && p.end <= total && p.start < end && p.end > start);
+        let first_page = overlapping.next().map(|p| p.page);
+        let last_page = overlapping.next_back().map(|p| p.page).or(first_page);
+        let location = match (first_page, last_page) {
+            (Some(first), Some(last)) if first == last => format!("PDF page {first}; "),
+            (Some(first), Some(last)) => format!("PDF pages {first}–{last}; "),
+            _ => String::new(),
+        };
+        out.push(TextChunk {
+            text: text[boundaries[start]..boundaries[end]].to_string(),
+            locator: format!("{location}characters {}–{}", start + 1, end),
+        });
+        if end == total {
+            break;
+        }
+        start = end - CHUNK_OVERLAP;
+    }
+    out
 }
 
 pub fn strip_tags(s: &str) -> String {
@@ -77,6 +149,7 @@ pub fn is_primary_link(url: &str) -> bool {
         || host.ends_with(".int")
         || matches!(host, "doi.org" | "arxiv.org" | "www.courtlistener.com" | "eur-lex.europa.eu")
         || path.ends_with(".txt")
+        || path.ends_with(".pdf")
         || path.contains("/filings/")
         || path.contains("/court")
 }
@@ -185,6 +258,70 @@ mod tests {
     use super::*;
 
     #[test]
+    fn windows_cover_middle_late_and_unicode_text() {
+        for size in [0, 1, 11_999, 12_000, 12_001, 23_750, MAX_TEXT] {
+            let text: String = (0..size).map(|i| if i % 2 == 0 { '界' } else { 'é' }).collect();
+            let windows = chunks(&text);
+            if size == 0 {
+                assert!(windows.is_empty());
+                continue;
+            }
+            let mut reconstructed = String::new();
+            for (index, chunk) in windows.iter().enumerate() {
+                assert!(chunk.text.chars().count() <= CHUNK_CHARS);
+                assert!(chunk.locator.starts_with("characters "));
+                reconstructed.extend(chunk.text.chars().skip(if index == 0 { 0 } else { CHUNK_OVERLAP }));
+            }
+            assert_eq!(reconstructed, text);
+        }
+        let text = format!("{} middle evidence {} final evidence", "a".repeat(20_000), "界".repeat(20_000));
+        let windows = chunks(&page("https://example.org", &text, false).text);
+        assert!(windows.iter().any(|c| c.text.contains("middle evidence")));
+        assert!(windows.last().unwrap().text.ends_with("final evidence"));
+    }
+
+    #[test]
+    fn pdf_windows_use_trusted_page_ranges_even_after_the_marker() {
+        let text = format!("[PDF page 99]\n{}\n[PDF page 500]\n{}", "界".repeat(13_000), "é".repeat(30_000));
+        let split = text.find("[PDF page 500]").unwrap();
+        let boundary = text[..split].chars().count();
+        let page = Page {
+            pages: vec![
+                PageLocation { page: 1, start: 0, end: boundary },
+                PageLocation { page: 2, start: boundary, end: text.chars().count() },
+            ],
+            text,
+            ..Default::default()
+        };
+        let windows = page.chunks();
+        assert!(windows[0].locator.starts_with("PDF page 1; characters 1–"));
+        assert!(windows[1].locator.starts_with("PDF pages 1–2; characters "));
+        let last = windows.last().unwrap();
+        assert!(!last.text.contains("[PDF page 500]"));
+        assert!(last.locator.starts_with("PDF page 2; characters "));
+        assert!(windows.iter().all(|window| !window.locator.contains("PDF page 99") && !window.locator.contains("PDF page 500")));
+    }
+
+    #[test]
+    fn untrusted_text_markers_never_create_pdf_locations() {
+        let text = "[PDF page 999] This is ordinary source content, not parser metadata.";
+        assert_eq!(chunks(text)[0].locator, format!("characters 1–{}", text.chars().count()));
+        for html in [false, true] {
+            let source = page("https://example.org", &format!("<p>{text}</p>"), html);
+            assert!(source.pages.is_empty());
+            assert!(source.chunks().iter().all(|chunk| chunk.locator.starts_with("characters ")));
+        }
+    }
+
+    #[test]
+    fn retained_text_limit_is_explicit() {
+        let page = page("x", &"界".repeat(MAX_TEXT + 1), false);
+        assert_eq!(page.text.chars().count(), MAX_TEXT);
+        assert_eq!(page.warnings.len(), 1);
+        assert!(page.warnings[0].contains("later content was not read"));
+    }
+
+    #[test]
     fn finds_identifiers() {
         let t = "See doi 10.1038/s41586-024-07421-0. Filed as 1:23-cv-01234, contact tips@press.org, \
                  CVE-2024-3094, arXiv:2402.14207, and \
@@ -220,6 +357,18 @@ mod tests {
         ] {
             assert!(ids.iter().any(|id| id.kind == kind && id.value == value), "missing {kind:?}: {ids:?}");
         }
+    }
+
+    #[test]
+    fn machine_transcription_provenance_survives_evidence_locators_and_cannot_be_forged_by_text() {
+        let source = "[Local OCR transcription] A source may contain arbitrary page-like labels.";
+        let mut document = page("https://example.org/record", source, false);
+        assert!(!document.chunks()[0].locator.contains("machine transcription"));
+        document.machine_transcription = true;
+        let locator = document.chunks()[0].locator.clone();
+        let evidence = crate::ledger::Evidence { source: 0, quote: source.into(), locator: Some(locator) };
+        let restored: crate::ledger::Evidence = serde_json::from_str(&serde_json::to_string(&evidence).unwrap()).unwrap();
+        assert!(restored.locator.unwrap().contains("document includes machine transcription/visual candidates"));
     }
 
     #[test]
